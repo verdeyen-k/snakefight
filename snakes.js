@@ -76,6 +76,10 @@
     return name;
   }
   const NO_SERVER = "Can't reach the game server. Check the internet connection.";
+  // How hard the computer snakes play in practice.
+  const LEVELS = ['Very Easy', 'Easy', 'Medium', 'Hard', 'Insane'];
+  const savedLevel = () => { const n = Number(store.get('snakefight-level') ?? 2); return LEVELS[n] ? n : 2; };
+  let botLevel = 2;
   const savedSpeed = () => SPEEDS[store.get('snakefight-speed')] ? store.get('snakefight-speed') : 'Normal';
 
   async function createRoom(name) {
@@ -376,40 +380,55 @@
   }
 
   // ── Computer snakes ──────────────────────────────────────────────────────
+  // How hard they play, from Very Easy to Insane (Medium is how they always played). slip: chance of a random
+  // turn; look: how far ahead they check for dead ends (0 = not at all); dodge: keep away from bigger heads;
+  // hunt: how much they go for smaller snakes' heads; retarget: ticks between picking new fruit; noise: randomness.
+  const SNAKE_LEVELS = [
+    { slip: 0.2, look: 0, dodge: false, hunt: 0, retarget: 40, noise: 12 },
+    { slip: 0.07, look: 1, dodge: false, hunt: 0, retarget: 25, noise: 8 },
+    { slip: 0, look: 2, dodge: true, hunt: 30, retarget: 15, noise: 6 },
+    { slip: 0, look: 3, dodge: true, hunt: 45, retarget: 6, noise: 2 },
+    { slip: 0, look: 4, dodge: true, hunt: 80, retarget: 1, noise: 0 },
+  ];
   function botDir(s) {
-    const g = game, grid = occupied();
+    const g = game, grid = occupied(), L = SNAKE_LEVELS[botLevel];
     // Tails that are about to move out of the way aren't really in the way.
     for (const o of g.snakes) if (o.alive && o.grow === 0) {
       const [tx, ty] = o.body[o.body.length - 1];
       if (inside(tx, ty)) grid[ty * N + tx] = 0;
     }
     const [hx, hy] = s.body[0];
-    if (!s.target || foodAt(s.target.x, s.target.y) < 0 || g.tick % 15 === 0) s.target = chooseTarget(s);
+    if (!s.target || foodAt(s.target.x, s.target.y) < 0 || g.tick % L.retarget === 0) s.target = chooseTarget(s);
     const walls = g.wall > 0 || g.secs > SHRINK_AFTER - 5;
 
     let best = s.dir, bestScore = -Infinity;
+    const open = [];
     for (let d = 0; d < 4; d++) {
       if (d === (s.dir + 2) % 4) continue;
       const x = hx + DIRS[d][0], y = hy + DIRS[d][1];
       if (!inside(x, y) || grid[y * N + x]) continue;
+      open.push(d);
       let score = 0;
       // Room to move: don't drive into a dead end.
-      const space = floodFill(grid, x, y, s.body.length * 2 + 10);
-      if (space < s.body.length + 2) score -= 1000 - space * 10;
-      else score += Math.min(space, 60);
+      if (L.look) {
+        const space = floodFill(grid, x, y, s.body.length * L.look + 10);
+        if (space < s.body.length + 2) score -= 1000 - space * 10;
+        else score += Math.min(space, 60);
+      }
       // Stay away from heads of snakes that would win a bump.
-      for (const o of g.snakes) {
+      if (L.dodge) for (const o of g.snakes) {
         if (!o.alive || o === s) continue;
         const [ox, oy] = o.body[0];
-        if (Math.abs(ox - x) + Math.abs(oy - y) === 1) score += o.body.length >= s.body.length ? -200 : 30;
+        if (Math.abs(ox - x) + Math.abs(oy - y) === 1) score += o.body.length >= s.body.length ? -200 : L.hunt;
       }
       // Keep off the edges once the walls are moving.
       if (walls && Math.min(x - g.wall, y - g.wall, N - 1 - g.wall - x, N - 1 - g.wall - y) < 2) score -= 40;
       if (s.target) score -= (Math.abs(s.target.x - x) + Math.abs(s.target.y - y)) * 4;
       if (d === s.dir) score += 2;
-      score += Math.random() * 6;
+      score += Math.random() * L.noise;
       if (score > bestScore) { bestScore = score; best = d; }
     }
+    if (open.length && Math.random() < L.slip) return open[Math.floor(Math.random() * open.length)];
     return best;
   }
 
@@ -634,6 +653,11 @@
   for (const ev of ['pointerup', 'pointercancel']) addEventListener(ev, () => { swipe = null; });
 
   // How many computer snakes in practice, and how fast.
+  const levelSeg = $('level');
+  levelSeg.innerHTML = LEVELS.map((name, n) => `<button type="button" data-n="${n}">${name}</button>`).join('');
+  const drawLevel = () => { botLevel = savedLevel(); for (const b of levelSeg.children) b.classList.toggle('on', Number(b.dataset.n) === botLevel); };
+  levelSeg.onclick = e => { const b = e.target.closest('button'); if (b) { store.set('snakefight-level', b.dataset.n); drawLevel(); } };
+  drawLevel();
   const botSeg = $('bot-count');
   botSeg.innerHTML = [1, 2, 3, 4, 5, 6, 7].map(n => `<button type="button" data-n="${n}">${n}</button>`).join('');
   const drawBots = () => { const n = Number(store.get('snakefight-bots')) || 7; for (const b of botSeg.children) b.classList.toggle('on', Number(b.dataset.n) === n); };

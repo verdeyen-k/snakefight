@@ -25,7 +25,7 @@ Bigger fruit is rarer. When a snake crashes, it turns into a trail of apples.
 
 ## Ways to play
 
-- **Practice:** you against 1 to 7 computer snakes.
+- **Practice:** you against 1 to 7 computer snakes. Pick how good they are: Very Easy, Easy, Medium, Hard or Insane.
 - **Online:** one person creates a room, and 1 to 7 friends type the 4-letter code on their own device. Only real players, no computer snakes.
 
 ## Controls
